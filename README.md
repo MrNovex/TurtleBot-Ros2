@@ -15,21 +15,20 @@ C++-Nodes (`drive_node.cpp`).
 - [Paketstruktur](#paketstruktur)
 - [Bauen (Build)](#bauen-build)
 - [Starten](#starten)
-- [Parameter](#parameter)
-- [Funktionsweise im Detail](#funktionsweise-im-detail)
+- [Einstellungen](#einstellungen)
+- [Funktionsweise](#funktionsweise)
 
 ---
 
 ## Was wurde geändert?
 
-| Vorher (C++)                         | Nachher (Python)                                   |
-|--------------------------------------|----------------------------------------------------|
-| `ament_cmake`, `rclcpp`              | `ament_python`, `rclpy`                            |
-| `src/drive_node.cpp`                 | `drive_control/drive_node.py`                      |
-| Feste Werte im Code                  | Konfigurierbare **ROS-2-Parameter**                |
-| Drehung nur **zeitbasiert** (3,14 s) | Drehung **odometriebasiert** (präzise ~180°)       |
-| Hinderniserkennung über feste Indizes| Erkennung über **Scan-Winkel** (robuster)          |
-| Dauerhaftes leichtes Verziehen       | **Kurshaltung** über Odometrie → fährt gerade      |
+| Vorher (C++)                          | Nachher (Python)                              |
+|---------------------------------------|-----------------------------------------------|
+| `ament_cmake`, `rclcpp`               | `ament_python`, `rclpy`                       |
+| `src/drive_node.cpp`                  | `drive_control/drive_node.py`                 |
+| Drehung **zeitbasiert** (3,14 s)      | Drehung **odometriebasiert** (präzise ~180°)  |
+| Hinderniserkennung über feste Indizes | Erkennung über **Scan-Winkel** (robuster)     |
+| Dauerhaftes leichtes Verziehen        | **Kurshaltung** über Odometrie → fährt gerade |
 
 Die alten C++-Dateien (`drive_node.cpp`, `CMakeLists.txt`, die
 C++-bezogenen `.vscode`-Dateien) werden nicht mehr benötigt und sind
@@ -56,21 +55,12 @@ r = v / ω = 0.1 / 0.02 = 5 m
 Der Roboter beschreibt also eine permanente Kurve mit 5 m Radius – das
 ist genau das wahrgenommene „leichte Schrägfahren".
 
-**Lösung (zweistufig):**
-
-1. **Keine künstliche Drehrate mehr.** Beim Geradeausfahren ist die
-   Soll-Drehrate `0.0 rad/s`.
-2. **Aktive Kurshaltung über Odometrie** (Standard: an). Beim Start und
-   nach jeder Drehung wird die aktuelle Ausrichtung (Yaw) als *Sollkurs*
-   gespeichert und mit einem **P-Regler** gehalten. Damit wird auch ein
-   *mechanischer* Drift (z. B. minimal unterschiedliche Räder, Reibung,
-   Bodenunebenheiten) automatisch ausgeglichen – der Roboter fährt eine
-   gerade Linie statt einer Kurve.
-
-> Hinweis: Die Kurshaltung lässt sich über den Parameter
-> `use_heading_control:=false` abschalten. Dann gilt nur Stufe 1
-> (`angular.z = 0.0`), was das Verziehen aus der Software entfernt, einen
-> reinen Hardware-Drift aber nicht aktiv korrigiert.
+**Lösung:** Statt eines festen Korrekturwerts hält der Node den Kurs
+über die Odometrie. Beim Start und nach jeder Drehung wird die aktuelle
+Ausrichtung (Yaw) als *Sollkurs* gemerkt und über einen einfachen
+P-Regler gehalten. So wird auch ein *mechanischer* Drift (z. B. minimal
+unterschiedliche Räder oder Reibung) automatisch ausgeglichen – der
+Roboter fährt eine gerade Linie statt einer Kurve.
 
 ---
 
@@ -142,63 +132,46 @@ ros2 run drive_control drive_node
 
 # Variante B – per Launch-Datei (empfohlen)
 ros2 launch drive_control drive_control.launch.py
-
-# Variante C – mit überschriebenen Parametern
-ros2 run drive_control drive_node --ros-args \
-  -p linear_speed:=0.15 -p use_heading_control:=true
 ```
 
 ---
 
-## Parameter
+## Einstellungen
 
-Alle Parameter haben sinnvolle Standardwerte und können beim Start
-überschrieben werden.
+Die wichtigsten Werte stehen als Konstanten oben in `__init__`
+(`drive_control/drive_node.py`) und können dort direkt angepasst werden:
 
-| Parameter              | Typ   | Standard | Bedeutung                                                        |
-|------------------------|-------|----------|------------------------------------------------------------------|
-| `linear_speed`         | float | `0.1`    | Vorwärtsgeschwindigkeit in m/s                                   |
-| `turn_speed`           | float | `1.1`    | Max. Drehgeschwindigkeit beim Ausweichen in rad/s               |
-| `safe_distance`        | float | `0.3`    | Sicherheitsabstand vorne in m (darunter wird gedreht)           |
-| `front_angle_deg`      | float | `10.0`   | Halber Öffnungswinkel des vorderen Prüfsektors in Grad (±)      |
-| `control_frequency`    | float | `20.0`   | Frequenz der Regelschleife in Hz                                |
-| `use_heading_control`  | bool  | `true`   | Odometrie-Kurshaltung an/aus (gegen schräges Fahren)            |
-| `heading_kp`           | float | `1.5`    | P-Verstärkung der Kursregelung                                  |
-| `max_correction`       | float | `0.5`    | Max. Korrektur-Drehrate beim Geradeausfahren in rad/s           |
-| `turn_tolerance_deg`   | float | `5.0`    | Restwinkel-Toleranz, ab der eine Drehung als fertig gilt        |
-| `turn_duration`        | float | `3.14`   | Drehdauer in s – **nur** im Fallback ohne Odometrie             |
+| Wert            | Standard | Bedeutung                               |
+|-----------------|----------|-----------------------------------------|
+| `speed`         | `0.1`    | Vorwärtsgeschwindigkeit in m/s          |
+| `turn_speed`    | `1.1`    | Drehgeschwindigkeit beim Ausweichen     |
+| `safe_distance` | `0.3`    | Abstand vorne in m, ab dem gedreht wird |
+| `kp`            | `1.5`    | Stärke der Kurshaltung (P-Regler)       |
 
 ---
 
-## Funktionsweise im Detail
+## Funktionsweise
 
-Der Node arbeitet als einfache **Zustandsmaschine** mit zwei Zuständen:
+Die Hauptschleife (`control_loop`, 20 Hz) entscheidet bei jedem Takt
+zwischen **Fahren** und **Drehen**:
 
-**`DRIVE` (Geradeausfahren)**
-- Sendet `linear.x = linear_speed`.
-- Ist die Kurshaltung aktiv und Odometrie vorhanden, wird die Abweichung
-  vom Sollkurs per P-Regler ausgeglichen
-  (`angular.z = clamp(heading_kp · Fehler, ±max_correction)`).
-- Sonst: `angular.z = 0.0`.
-- Wird im vorderen Sektor (±`front_angle_deg`) ein Abstand ≤
-  `safe_distance` gemessen, wird nach `TURN` gewechselt.
+- **Fahren:** `linear.x = speed`. Der Kurs wird gehalten, indem die
+  Abweichung zur gemerkten Soll-Ausrichtung mit `kp` ausgeregelt wird
+  (`angular.z = kp · Fehler`) – das verhindert das Schrägfahren.
+- **Hindernis erkannt** (Abstand ≤ `safe_distance` im Bereich ±10° vorne):
+  Der Roboter dreht sich, bis er ~180° weiter ausgerichtet ist, und
+  merkt sich danach die neue Richtung als Sollkurs.
 
-**`TURN` (Ausweichen, ~180°)**
-- *Mit Odometrie:* dreht, bis das Ziel (aktueller Yaw + 180°) bis auf
-  `turn_tolerance_deg` erreicht ist – präzise und unabhängig von der
-  Akkuspannung.
-- *Ohne Odometrie (Fallback):* dreht für `turn_duration` Sekunden mit
-  `turn_speed` (Verhalten wie im Original).
-- Danach zurück zu `DRIVE`; die neue Ausrichtung wird als Sollkurs
-  übernommen.
+Die Ausrichtung (Yaw) kommt aus der Odometrie (`/odom`). Solange noch
+keine Odometrie empfangen wurde, fährt der Roboter einfach geradeaus.
 
 **Topics**
 
-| Richtung   | Topic      | Typ                          |
-|------------|------------|------------------------------|
-| Subscribe  | `/scan`    | `sensor_msgs/msg/LaserScan`  |
-| Subscribe  | `/odom`    | `nav_msgs/msg/Odometry`      |
-| Publish    | `/cmd_vel` | `geometry_msgs/msg/Twist`    |
+| Richtung  | Topic      | Typ                         |
+|-----------|------------|-----------------------------|
+| Subscribe | `/scan`    | `sensor_msgs/msg/LaserScan` |
+| Subscribe | `/odom`    | `nav_msgs/msg/Odometry`     |
+| Publish   | `/cmd_vel` | `geometry_msgs/msg/Twist`   |
 
-Beim Beenden (z. B. `Ctrl+C`) sendet der Node noch einen Null-`Twist`,
-damit der Roboter sicher stehen bleibt.
+Beim Beenden (`Ctrl+C`) sendet der Node noch einen Null-`Twist`, damit
+der Roboter stehen bleibt.
