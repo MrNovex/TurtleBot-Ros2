@@ -1,5 +1,3 @@
-"""Setup-Skript fuer das ament_python-Paket ``drive_control``."""
-
 import os
 from glob import glob
 
@@ -15,7 +13,6 @@ setup(
         ('share/ament_index/resource_index/packages',
          ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        # Launch-Dateien mit installieren, damit "ros2 launch" sie findet.
         (os.path.join('share', package_name, 'launch'),
          glob('launch/*.launch.py')),
     ],
@@ -23,12 +20,11 @@ setup(
     zip_safe=True,
     maintainer='Timo Fahrmer',
     maintainer_email='timofahrmer@gmail.com',
-    description='TurtleBot3 Burger Fahrsteuerung (Python-Portierung).',
+    description='TurtleBot3 Burger Fahrsteuerung (Python).',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            # Ausfuehrbarer Name: "ros2 run drive_control drive_node"
             'drive_node = drive_control.drive_node:main',
         ],
     },
