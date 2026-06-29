@@ -16,7 +16,7 @@ class WallFollowNode(Node):
         super().__init__('wall_follow_node')
 
         # Einstellungen
-        self.wanted_distance = 0.30   # 30cm Abstand zur Wand
+        self.wanted_distance = 0.45   # 45cm Abstand zur Wand
         self.speed = 0.08             # wie schnell vorwaerts (m/s)
         self.max_turn = 1.0           # maximale Drehgeschwindigkeit
 

@@ -24,7 +24,7 @@ Dieses Paket enthält **zwei Fahrmodi** für den TurtleBot3 Burger:
 | Modus | Node | Beschreibung |
 |---|---|---|
 | 🔄 **Drive (180°-Drehen)** | `drive_node` | Fährt geradeaus, dreht bei Hindernis um ~180° |
-| 🧱 **Wall-Follow** | `wall_follow_node` | Fährt an der rechten Wand entlang mit 30 cm Abstand |
+| 🧱 **Wall-Follow** | `wall_follow_node` | Fährt an der rechten Wand entlang mit 45 cm Abstand |
 
 Beide Nodes sind als **reine Python-Portierung** umgesetzt und nutzen den LiDAR-Scanner zur Navigation.
 
@@ -267,7 +267,7 @@ ros2 launch drive_control wall_follow.launch.py
 
 | Parameter | Standardwert | Beschreibung |
 |---|:---:|---|
-| `wanted_distance` | `0.30` m | Gewünschter Abstand zur rechten Wand |
+| `wanted_distance` | `0.45` m | Gewünschter Abstand zur rechten Wand |
 | `speed` | `0.08` m/s | Vorwärtsgeschwindigkeit |
 | `max_turn` | `1.0` rad/s | Maximale Drehgeschwindigkeit |
 
@@ -313,7 +313,7 @@ Der Node misst drei Richtungen per LiDAR (vorne, rechts, vorne-rechts) und entsc
 ┌────────────────┐   Wand vorne?    ┌──────────────┐
 │ AN WAND FAHREN │ ──── ja ────────▶│ LINKS DREHEN │
 │   v = 0.08     │                  │  (auf Stelle) │
-│   Abstand 30cm │◀── frei ────────│              │
+│   Abstand 45cm │◀── frei ────────│              │
 └───────┬────────┘                  └──────────────┘
         │
         │ keine Wand rechts?
@@ -326,10 +326,10 @@ Der Node misst drei Richtungen per LiDAR (vorne, rechts, vorne-rechts) und entsc
 
 | Situation | Aktion |
 |---|---|
-| 🧱 Wand **vorne** (< 35 cm) | Stoppen, nach links drehen |
-| 🔍 **Keine Wand** rechts (> 45 cm) | Vorwärts + rechts drehen |
-| ⚠️ **Zu nah** an Wand rechts (< 25 cm) | Vorwärts + leicht links lenken |
-| ✅ Abstand **passt** (~30 cm) | Geradeaus fahren |
+| 🧱 Wand **vorne** (< 50 cm) | Stoppen, nach links drehen |
+| 🔍 **Keine Wand** rechts (> 60 cm) | Vorwärts + rechts drehen |
+| ⚠️ **Zu nah** an Wand rechts (< 40 cm) | Vorwärts + leicht links lenken |
+| ✅ Abstand **passt** (~45 cm) | Geradeaus fahren |
 
 ### ROS 2 Topics (Wall Follow)
 
