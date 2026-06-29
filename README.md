@@ -2,10 +2,10 @@
   <img src="https://www.ros.org/imgs/logo-white.png" alt="ROS 2 Logo" width="120">
 </p>
 
-<h1 align="center">🐢 TurtleBot3 Burger – Drive Control</h1>
+<h1 align="center">🐢 TurtleBot3 Burger – Drive Control & Wall Follow</h1>
 
 <p align="center">
-  <strong>Autonome Fahrsteuerung mit Hindernisvermeidung für den TurtleBot3 Burger</strong>
+  <strong>Autonome Fahrsteuerung mit Hindernisvermeidung & Wall-Following für den TurtleBot3 Burger</strong>
 </p>
 
 <p align="center">
@@ -19,14 +19,20 @@
 
 ## 📋 Überblick
 
-Der Roboter fährt autonom geradeaus, erkennt mit dem **LiDAR-Scanner** Hindernisse direkt vor sich und weicht ihnen durch eine **~180°-Drehung** aus. Der Kurs wird über **Odometrie** gehalten, um mechanischen Drift automatisch auszugleichen.
+Dieses Paket enthält **zwei Fahrmodi** für den TurtleBot3 Burger:
 
-Dieses Paket ist die **vollständige Python-Portierung** des ursprünglichen C++-Nodes (`drive_node.cpp`).
+| Modus | Node | Beschreibung |
+|---|---|---|
+| 🔄 **Drive (180°-Drehen)** | `drive_node` | Fährt geradeaus, dreht bei Hindernis um ~180° |
+| 🧱 **Wall-Follow** | `wall_follow_node` | Fährt an der rechten Wand entlang mit 30 cm Abstand |
+
+Beide Nodes sind als **reine Python-Portierung** umgesetzt und nutzen den LiDAR-Scanner zur Navigation.
 
 ### ✨ Highlights
 
 - 🎯 **Odometriebasierte Kurshaltung** – fährt exakt geradeaus statt in einer leichten Kurve
 - 🔄 **Präzise 180°-Drehung** – odometriegesteuert statt zeitbasiert
+- 🧱 **Wall-Following** – folgt der rechten Wand mit konstantem Abstand (fährt im Kreis durch den Raum)
 - 🛡️ **Robuste Hinderniserkennung** – über Scan-Winkel statt fester Array-Indizes
 - 🐍 **Reines Python** – einfacher zu lesen, zu erweitern und zu debuggen
 
@@ -43,7 +49,8 @@ Dieses Paket ist die **vollständige Python-Portierung** des ursprünglichen C++
 - [Installation & Build](#-installation--build)
 - [Starten](#-starten)
 - [Konfiguration](#-konfiguration)
-- [Funktionsweise](#-funktionsweise)
+- [Funktionsweise – Drive Node](#-funktionsweise--drive-node)
+- [Funktionsweise – Wall Follow](#-funktionsweise--wall-follow)
 - [Lizenz](#-lizenz)
 
 ---
@@ -136,10 +143,12 @@ TurtleBot-Ros2/
     ├── resource/
     │   └── drive_control                   # ament-Index-Marker (leer)
     ├── launch/
-    │   └── drive_control.launch.py         # Launch-Datei für ros2 launch
+    │   ├── drive_control.launch.py         # Launch: Drive-Node (180°-Drehen)
+    │   └── wall_follow.launch.py           # Launch: Wall-Follow-Node
     └── drive_control/
         ├── __init__.py
-        └── drive_node.py                   # Haupt-Node (Fahrsteuerung)
+        ├── drive_node.py                   # Node: Geradeaus + 180°-Drehung
+        └── wall_follow_node.py             # Node: Wandverfolgung rechts
 ```
 
 ---
@@ -222,21 +231,30 @@ ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py
 
 </details>
 
-### Schritt 2: Fahr-Node starten
+### Schritt 2: Einen der beiden Modi starten
 
+**Modus A – Drive (180°-Drehen bei Hindernis):**
 ```bash
-# Variante A – direkt per ros2 run
 ros2 run drive_control drive_node
-
-# Variante B – per Launch-Datei (empfohlen)
+# oder per Launch-Datei:
 ros2 launch drive_control drive_control.launch.py
 ```
+
+**Modus B – Wall-Follow (an der rechten Wand entlang):**
+```bash
+ros2 run drive_control wall_follow_node
+# oder per Launch-Datei:
+ros2 launch drive_control wall_follow.launch.py
+```
+
+> [!WARNING]
+> Immer nur **einen** der beiden Nodes gleichzeitig starten – beide publishen auf `/cmd_vel`.
 
 ---
 
 ## ⚙️ Konfiguration
 
-Die Parameter stehen als Konstanten in der `__init__`-Methode von [`drive_node.py`](drive_control/drive_control/drive_node.py) und können dort direkt angepasst werden:
+### Drive Node (`drive_node.py`)
 
 | Parameter | Standardwert | Beschreibung |
 |---|:---:|---|
@@ -245,12 +263,20 @@ Die Parameter stehen als Konstanten in der `__init__`-Methode von [`drive_node.p
 | `safe_distance` | `0.3` m | Mindestabstand zum Hindernis (vorne) |
 | `kp` | `1.5` | Verstärkungsfaktor des P-Reglers für die Kurshaltung |
 
+### Wall-Follow Node (`wall_follow_node.py`)
+
+| Parameter | Standardwert | Beschreibung |
+|---|:---:|---|
+| `wanted_distance` | `0.30` m | Gewünschter Abstand zur rechten Wand |
+| `speed` | `0.08` m/s | Vorwärtsgeschwindigkeit |
+| `max_turn` | `1.0` rad/s | Maximale Drehgeschwindigkeit |
+
 > [!WARNING]
-> Ein `safe_distance`-Wert unter `0.2 m` kann bei höheren Geschwindigkeiten dazu führen, dass der Roboter nicht rechtzeitig stoppt.
+> Ein `safe_distance` / `wanted_distance`-Wert unter `0.2 m` kann bei höheren Geschwindigkeiten dazu führen, dass der Roboter nicht rechtzeitig reagiert.
 
 ---
 
-## 🧠 Funktionsweise
+## 🧠 Funktionsweise – Drive Node
 
 ### Kontrollschleife (20 Hz)
 
@@ -267,7 +293,7 @@ Die Parameter stehen als Konstanten in der `__init__`-Methode von [`drive_node.p
 - **Hindernis erkannt** (Abstand ≤ `safe_distance` im Bereich **±10°** vor dem Roboter): Der Roboter dreht sich, bis er ~180° weiter ausgerichtet ist, und speichert die neue Richtung als Sollkurs
 - **Fallback:** Solange keine Odometrie empfangen wurde, fährt der Roboter einfach geradeaus
 
-### ROS 2 Topics
+### ROS 2 Topics (Drive Node)
 
 | Richtung | Topic | Nachrichtentyp | Beschreibung |
 |:---:|---|---|---|
@@ -275,8 +301,45 @@ Die Parameter stehen als Konstanten in der `__init__`-Methode von [`drive_node.p
 | ⬅️ Sub | `/odom` | `nav_msgs/Odometry` | Odometrie für Yaw-Berechnung |
 | ➡️ Pub | `/cmd_vel` | `geometry_msgs/Twist` | Geschwindigkeitsbefehle an den Roboter |
 
+---
+
+## 🧱 Funktionsweise – Wall Follow
+
+### Kontrollschleife (10 Hz)
+
+Der Node misst drei Richtungen per LiDAR (vorne, rechts, vorne-rechts) und entscheidet:
+
+```
+┌────────────────┐   Wand vorne?    ┌──────────────┐
+│ AN WAND FAHREN │ ──── ja ────────▶│ LINKS DREHEN │
+│   v = 0.08     │                  │  (auf Stelle) │
+│   Abstand 30cm │◀── frei ────────│              │
+└───────┬────────┘                  └──────────────┘
+        │
+        │ keine Wand rechts?
+        ▼
+┌────────────────┐
+│  RECHTS DREHEN │
+│  (Wand suchen) │
+└────────────────┘
+```
+
+| Situation | Aktion |
+|---|---|
+| 🧱 Wand **vorne** (< 35 cm) | Stoppen, nach links drehen |
+| 🔍 **Keine Wand** rechts (> 45 cm) | Vorwärts + rechts drehen |
+| ⚠️ **Zu nah** an Wand rechts (< 25 cm) | Vorwärts + leicht links lenken |
+| ✅ Abstand **passt** (~30 cm) | Geradeaus fahren |
+
+### ROS 2 Topics (Wall Follow)
+
+| Richtung | Topic | Nachrichtentyp | Beschreibung |
+|:---:|---|---|---|
+| ⬅️ Sub | `/scan` | `sensor_msgs/LaserScan` | LiDAR-Daten (vorne, rechts, vorne-rechts) |
+| ➡️ Pub | `/cmd_vel` | `geometry_msgs/Twist` | Geschwindigkeitsbefehle an den Roboter |
+
 > [!NOTE]
-> Beim Beenden (`Ctrl+C`) sendet der Node einen **Null-Twist**, damit der Roboter stehen bleibt.
+> Beim Beenden (`Ctrl+C`) senden beide Nodes einen **Null-Twist**, damit der Roboter stehen bleibt.
 
 ---
 

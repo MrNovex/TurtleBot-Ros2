@@ -26,6 +26,7 @@ setup(
     entry_points={
         'console_scripts': [
             'drive_node = drive_control.drive_node:main',
+            'wall_follow_node = drive_control.wall_follow_node:main',
         ],
     },
 )
